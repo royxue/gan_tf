@@ -1,0 +1,1 @@
+python main.py --dataset kojiharu --train --crop --input_height=128 --output_height=128 --epoch=100 --batch_size=32
