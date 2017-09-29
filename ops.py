@@ -2,8 +2,13 @@ import tensorflow as tf
 
 
 def bn(input_, is_training, scope):
-    return tf.layers.batch_normalization(input_, epsilon=1e-5, momentum=0.9,
-                                         is_training=is_training, scope=scope)
+    return tf.contrib.layers.batch_norm(input_,
+                                        decay=0.9,
+                                        updates_collections=None,
+                                        epsilon=1e-5,
+                                        scale=True,
+                                        is_training=is_training,
+                                        scope=scope)
 
 
 def conv2d(input_, output_dim, k_h=5, k_w=5, d_h=2, d_w=2,
