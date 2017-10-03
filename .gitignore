@@ -1,8 +1,11 @@
 #data folder
-data/kojiharu*
+data/*
 comp/data/*
 comp/logs/*
 comp/checkpoint/*
+comp/samples/*
+checkpoint/*
+logs/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,36 +1,42 @@
 import argparse
+import numpy as np
 import os
 import tensorflow as tf
 
 from ops import conv2d, bn, lrelu, linear, deconv2d
-from utils import *
+from utils import load_mnist, load_data, check_folder, save_images
 import time
 
 
 class GAN():
-    def __init__(self, sess, epoch, batch_size, z_dim, checkpoint_dir, result_dir, log_dir):
+    def __init__(self, sess, dataset, input_size, output_size, epoch,
+                 batch, z_dim, checkpoint, result, log):
         self.sess = sess
-        self.epoch = epoch
-        self.batch_size = batch_size
-        self.z_dim = z_dim
-        self.checkpoint_dir = checkpoint_dir
-        self.result_dir = result_dir
-        self.log_dir = log_dir
         self.model_name = 'gan'
 
-        # Use mnist
-        self.dateset = 'mnist'
-        self.in_h = 28
-        self.in_w = 28
-        self.out_h = 28
-        self.out_h = 28
+        self.epoch = epoch
+        self.batch_size = batch
+        self.z_dim = z_dim
+        self.checkpoint_dir = checkpoint
+        self.result_dir = result
+        self.log_dir = log
+
+        self.dateset = dataset
+        self.in_h = input_size
+        self.in_w = input_size
+        self.out_h = output_size
+        self.out_h = output_size
 
         self.c_dim = 1
         self.learning_rate = 0.0002
         self.beta1 = 0.5
 
-        self.sample_num = 64  # number of generated images to be saved
-        self.data_X, self.data_y = load_mnist()
+        self.sample_num = 64
+        if (dataset == 'mnist'):
+            self.data_X, self.data_y = load_mnist()
+        else:
+            self.data_X, self.data_y = load_data(dataset)
+
         self.num_batches = len(self.data_X) // self.batch_size
 
     def generator(self, z, is_training=True, reuse=False):
@@ -86,15 +92,18 @@ class GAN():
             g, is_training=True, reuse=True)
 
         d_loss = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(logits=d_logits, labels=tf.ones_like(d)))
+            tf.nn.sigmoid_cross_entropy_with_logits(logits=d_logits,
+                                                    labels=tf.ones_like(d)))
         d_g_loss = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(logits=d_g_logits, labels=tf.zeros_like(d_g)))
+            tf.nn.sigmoid_cross_entropy_with_logits(logits=d_g_logits,
+                                                    labels=tf.zeros_like(d_g)))
 
         self.d_loss = d_loss + d_g_loss
 
         # get loss for generator
         self.g_loss = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(logits=d_g_logits, labels=tf.ones_like(d_g)))
+            tf.nn.sigmoid_cross_entropy_with_logits(logits=d_g_logits,
+                                                    labels=tf.ones_like(d_g)))
 
         """ Training """
         # divide trainable variables into a group for D and a group for G
@@ -104,9 +113,11 @@ class GAN():
 
         # optimizers
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-            self.d_optim = tf.train.AdamOptimizer(self.learning_rate, beta1=self.beta1) \
+            self.d_optim = tf.train.AdamOptimizer(self.learning_rate,
+                                                  beta1=self.beta1) \
                 .minimize(self.d_loss, var_list=d_vars)
-            self.g_optim = tf.train.AdamOptimizer(self.learning_rate * 5, beta1=self.beta1) \
+            self.g_optim = tf.train.AdamOptimizer(self.learning_rate * 5,
+                                                  beta1=self.beta1) \
                 .minimize(self.g_loss, var_list=g_vars)
 
         """" Testing """
@@ -130,8 +141,8 @@ class GAN():
         tf.global_variables_initializer().run()
 
         # graph inputs for visualize training results
-        self.sample_z = np.random.uniform(-1,
-                                          1, size=(self.batch_size, self.z_dim))
+        self.sample_z = np.random.uniform(-1, 1,
+                                          size=(self.batch_size, self.z_dim))
 
         # saver to save model
         self.saver = tf.train.Saver()
@@ -144,7 +155,7 @@ class GAN():
         could_load, checkpoint_counter = self.load(self.checkpoint_dir)
         if could_load:
             start_epoch = (int)(checkpoint_counter / self.num_batches)
-            start_batch_id = checkpoint_counter - start_epoch * self.num_batches
+            start_batch_id = checkpoint_counter-start_epoch*self.num_batches
             counter = checkpoint_counter
             print(" [*] Load SUCCESS")
         else:
@@ -159,10 +170,8 @@ class GAN():
 
             # get batch data
             for idx in range(start_batch_id, self.num_batches):
-                batch_images = self.data_X[idx *
-                                           self.batch_size:(idx + 1) * self.batch_size]
-                batch_z = np.random.uniform(-1, 1,
-                                            [self.batch_size, self.z_dim]).astype(np.float32)
+                batch_images = self.data_X[idx*self.batch_size:(idx + 1) * self.batch_size]
+                batch_z = np.random.uniform(-1, 1, [self.batch_size, self.z_dim]).astype(np.float32)
 
                 # update D network
                 _, summary_str, d_loss = self.sess.run([self.d_optim, self.d_sum, self.d_loss],
@@ -171,7 +180,8 @@ class GAN():
 
                 # update G network
                 _, summary_str, g_loss = self.sess.run(
-                    [self.g_optim, self.g_sum, self.g_loss], feed_dict={self.z: batch_z})
+                    [self.g_optim, self.g_sum, self.g_loss],
+                    feed_dict={self.z: batch_z})
                 self.writer.add_summary(summary_str, counter)
 
                 # display training status
@@ -255,47 +265,41 @@ def parse_args():
     desc = "Tensorflow implementation of GAN collections"
     parser = argparse.ArgumentParser(description=desc)
 
-    parser.add_argument('--dataset', type=str, default='mnist', choices=['mnist', 'fashion-mnist', 'celebA'],
+    parser.add_argument('--dataset', type=str, default='mnist',
                         help='The name of dataset')
+    parser.add_argument('--input_size', type=int, default=28,
+                        help='The size of input images')
+    parser.add_argument('--output_size', type=int, default=28,
+                        help='The size of output images')
     parser.add_argument('--epoch', type=int, default=20,
                         help='The number of epochs to run')
     parser.add_argument('--batch_size', type=int,
                         default=64, help='The size of batch')
-    parser.add_argument('--z_dim', type=int, default=62,
+    parser.add_argument('--z_dim', type=int, default=64,
                         help='Dimension of noise vector')
-    parser.add_argument('--checkpoint_dir', type=str, default='checkpoint',
-                        help='Directory name to save the checkpoints')
-    parser.add_argument('--result_dir', type=str, default='results',
-                        help='Directory name to save the generated images')
-    parser.add_argument('--log_dir', type=str, default='logs',
-                        help='Directory name to save training logs')
+    parser.add_argument('--checkpoint', type=str, default='checkpoint',
+                        help='Folder to save the checkpoints')
+    parser.add_argument('--result', type=str, default='results',
+                        help='Folder to save the generated images')
+    parser.add_argument('--log', type=str, default='logs',
+                        help='Folder to save training logs')
 
     return check_args(parser.parse_args())
 
 
 def check_args(args):
-    # --checkpoint_dir
-    check_folder(args.checkpoint_dir)
+    check_folder([args.checkpoint, args.result, args.log])
 
-    # --result_dir
-    check_folder(args.result_dir)
-
-    # --result_dir
-    check_folder(args.log_dir)
-
-    # --epoch
     try:
         assert args.epoch >= 1
     except:
         print('number of epochs must be larger than or equal to one')
 
-    # --batch_size
     try:
         assert args.batch_size >= 1
     except:
         print('batch size must be larger than or equal to one')
 
-    # --z_dim
     try:
         assert args.z_dim >= 1
     except:
@@ -311,16 +315,15 @@ def main():
     # open session
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         # declare instance for GAN
-        gan = GAN(sess, epoch=args.epoch, batch_size=args.batch_size, z_dim=args.z_dim,
-                  checkpoint_dir=args.checkpoint_dir, result_dir=args.result_dir, log_dir=args.log_dir)
-
+        gan = GAN(sess, epoch=args.epoch, batch_size=args.batch_size,
+                  input_size=args.input_size, output_size=args.output_size,
+                  z_dim=args.z_dim, checkpoint_dir=args.checkpoint,
+                  result_dir=args.result, log_dir=args.log)
         # build graph
         gan.build()
-
         # launch the graph in a session
         gan.train()
         print(" [*] Training finished!")
-
         # visualize learned generator
         gan.visualize_results(args.epoch - 1)
         print(" [*] Testing finished!")
